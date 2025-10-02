@@ -16,10 +16,17 @@ import numpy as np
 from typing import List, Dict, Optional
 from pathlib import Path
 
-import faiss
-from sentence_transformers import SentenceTransformer
-from rank_bm25 import BM25Okapi
-import torch
+# Условные импорты
+try:
+    import faiss
+    from sentence_transformers import SentenceTransformer
+    from rank_bm25 import BM25Okapi
+    import torch
+except ImportError:
+    faiss = None
+    SentenceTransformer = None
+    BM25Okapi = None
+    torch = None
 
 from .interfaces import Chunk, SearchResult
 
@@ -72,6 +79,10 @@ class SearchEngine:
         self.weights_dir = Path(weights_dir)
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(exist_ok=True)
+        
+        # Проверка зависимостей
+        if faiss is None or SentenceTransformer is None:
+            raise RuntimeError("❌ Необходимые зависимости не установлены: faiss-cpu, sentence-transformers, rank-bm25")
         
         # Кэш эмбеддингов
         self.embedding_cache = EmbeddingCache()

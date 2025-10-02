@@ -18,8 +18,14 @@ import time
 import numpy as np
 import torch
 
-from transformers import AutoTokenizer
-from vllm import LLM, SamplingParams
+# Условные импорты
+try:
+    from transformers import AutoTokenizer
+    from vllm import LLM, SamplingParams
+except ImportError:
+    AutoTokenizer = None
+    LLM = None
+    SamplingParams = None
 
 from .interfaces import Message
 from submit_interface import ModelWithMemory
@@ -48,6 +54,10 @@ class SubmitModelWithMemory(ModelWithMemory):
         self.model_path = model_path
         self.weights_dir = weights_dir
         init_start = time.time()
+        
+        # Проверка зависимостей
+        if AutoTokenizer is None or LLM is None:
+            raise RuntimeError("❌ Необходимые зависимости не установлены: transformers, vllm")
         
         # ====================================================================
         # ШАГ 1: GigaChat
