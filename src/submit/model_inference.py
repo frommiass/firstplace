@@ -63,3 +63,4 @@ class SubmitModelWithMemory(ModelWithMemory):
 
         except Exception as e:
             return f"Ошибка при инференсе локальной модели: {str(e)}"
+
