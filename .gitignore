@@ -1,0 +1,49 @@
+# Веса моделей (исключаем из репозитория)
+src/submit/weights/
+weights/
+*.bin
+*.safetensors
+*.pt
+*.pth
+*.ckpt
+
+# Кэш
+cache/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Логи
+*.log
+logs/
+
+# Временные файлы
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db
+
+# Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Docker
+.dockerignore
