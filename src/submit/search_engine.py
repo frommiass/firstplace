@@ -234,10 +234,10 @@ class SearchEngine:
             scores, indices = index.search(question_emb, min(top_k, len(chunks)))
             
             # Добавляем результаты
-            for score, idx in zip(scores[0], indices[0]):
+        for score, idx in zip(scores[0], indices[0]):
                 if idx < len(chunks):
                     result = SearchResult(
-                        chunk=chunks[idx],
+                    chunk=chunks[idx],
                         score=float(score),
                         final_score=float(score)  # Пока без reranker
                     )
@@ -295,7 +295,7 @@ class SearchEngine:
             # Обновляем финальные скоры
             for i, result in enumerate(results):
                 result.final_score = float(scores[i])
-            
+                    
         except Exception as e:
             print(f"⚠️  Ошибка reranker: {e}")
             # Если reranker не работает, используем исходные скоры

@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import List
 
-from models import Message
+from src.submit.interfaces import Message
 
 
 class ModelWithMemory(ABC):

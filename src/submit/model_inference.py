@@ -12,11 +12,80 @@
 ❌ Семантика и правила
 """
 
+import os
+import sys
+import subprocess
+from pathlib import Path
 from collections import defaultdict
 from typing import List, Dict
 import time
 import numpy as np
 import torch
+
+
+def install_dependencies_from_wheels():
+    """Автоматическая установка зависимостей из локальных .whl файлов"""
+    try:
+        current_dir = Path(__file__).parent
+        libs_dir = current_dir / "libs"
+        
+        if not libs_dir.exists():
+            print("⚠️  Папка libs/ не найдена")
+            return
+        
+        wheel_files = list(libs_dir.glob("*.whl"))
+        if not wheel_files:
+            print("⚠️  .whl файлы не найдены в папке libs/")
+            return
+        
+        print(f"🔧 Найдено {len(wheel_files)} .whl файлов для установки...")
+        
+        # Словарь для проверки установленных пакетов
+        package_checks = {
+            'faiss-cpu': lambda: __import__('faiss'),
+            'sentence-transformers': lambda: __import__('sentence_transformers'),
+            'rank-bm25': lambda: __import__('rank_bm25')
+        }
+        
+        for wheel_file in wheel_files:
+            try:
+                # Извлекаем имя пакета из имени файла
+                package_name = wheel_file.stem.split('-')[0].replace('_', '-')
+                
+                # Проверяем, установлен ли уже пакет
+                is_installed = False
+                if package_name in package_checks:
+                    try:
+                        package_checks[package_name]()
+                        print(f"    ✓ {package_name} уже установлен")
+                        is_installed = True
+                    except ImportError:
+                        pass
+                
+                # Если не установлен - устанавливаем
+                if not is_installed:
+                    print(f"    → Установка {wheel_file.name}...")
+                    result = subprocess.run([
+                        sys.executable, "-m", "pip", "install", 
+                        str(wheel_file), "--quiet", "--no-deps"
+                    ], capture_output=True, text=True)
+                    
+                    if result.returncode == 0:
+                        print(f"    ✓ {package_name} установлен успешно")
+                    else:
+                        print(f"    ⚠️  Ошибка установки {package_name}: {result.stderr}")
+                        
+            except Exception as e:
+                print(f"    ⚠️  Ошибка обработки {wheel_file.name}: {e}")
+        
+        print("🔧 Установка зависимостей завершена\n")
+            
+    except Exception as e:
+        print(f"⚠️  Ошибка при установке зависимостей: {e}")
+
+
+# Автоматически устанавливаем зависимости при импорте модуля
+install_dependencies_from_wheels()
 
 # Условные импорты
 try:
@@ -28,7 +97,7 @@ except ImportError:
     SamplingParams = None
 
 from .interfaces import Message
-from submit_interface import ModelWithMemory
+from src.submit_interface import ModelWithMemory
 
 # Импорт модулей
 from .data_processor import DataProcessor
@@ -55,9 +124,9 @@ class SubmitModelWithMemory(ModelWithMemory):
         self.weights_dir = weights_dir
         init_start = time.time()
         
-        # Проверка зависимостей
-        if AutoTokenizer is None or LLM is None:
-            raise RuntimeError("❌ Необходимые зависимости не установлены: transformers, vllm")
+        # Проверка зависимостей (vllm не обязателен)
+        if AutoTokenizer is None:
+            raise RuntimeError("❌ Необходимые зависимости не установлены: transformers")
         
         # ====================================================================
         # ШАГ 1: GigaChat
