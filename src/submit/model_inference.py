@@ -28,7 +28,6 @@ except ImportError:
     SamplingParams = None
 
 from .interfaces import Message
-from submit_interface import ModelWithMemory
 
 # Импорт модулей
 from .data_processor import DataProcessor
@@ -36,7 +35,7 @@ from .search_engine import SearchEngine
 from .answer_builder import AnswerBuilder
 
 
-class SubmitModelWithMemory(ModelWithMemory):
+class SubmitModelWithMemory:
     """
     Главный класс решения - УПРОЩЕННАЯ архитектура.
     

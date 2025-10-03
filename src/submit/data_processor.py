@@ -159,7 +159,7 @@ class DataProcessor(IChunkProcessor):
         for i, msg in enumerate(messages):
             if msg.role == 'user':
                 # Оригинальный текст
-                user_text = msg.content.strip()
+                user_text = str(msg.content).strip() if msg.content is not None else ""
                 
                 if not user_text:  # Пропускаем пустые
                     continue
@@ -167,7 +167,8 @@ class DataProcessor(IChunkProcessor):
                 # Ищем следующее сообщение ассистента
                 assistant_confirmation = None
                 if i + 1 < len(messages) and messages[i + 1].role == 'assistant':
-                    assistant_confirmation = messages[i + 1].content.strip()
+                    assistant_content = messages[i + 1].content
+                    assistant_confirmation = str(assistant_content).strip() if assistant_content is not None else "" 
                 
                 # Создаем полный контекст
                 if assistant_confirmation and len(assistant_confirmation) < 200:
@@ -186,7 +187,7 @@ class DataProcessor(IChunkProcessor):
                 
             elif msg.role == 'assistant':
                 # Реплики ассистента тоже сохраняем (потом отфильтруем)
-                content = msg.content.strip()
+                content = str(msg.content).strip() if msg.content is not None else ""
                 
                 if not content:  # Пропускаем пустые
                     continue

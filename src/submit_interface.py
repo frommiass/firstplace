@@ -2,10 +2,9 @@ from abc import ABC, abstractmethod
 from typing import List
 
 from submit.interfaces import Message
-from submit.model_inference import SubmitModelWithMemory
 
-# Алиас для совместимости
-ModelWithMemory = SubmitModelWithMemory
+# Алиас для совместимости - будет определен позже
+ModelWithMemory = None
 
 
 class ModelWithMemoryBase(ABC):
