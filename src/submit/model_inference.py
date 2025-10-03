@@ -96,8 +96,7 @@ except ImportError:
     LLM = None
     SamplingParams = None
 
-from .interfaces import Message
-from src.submit_interface import ModelWithMemory
+from .interfaces import Message, ModelWithMemory
 
 # Импорт модулей
 from .data_processor import DataProcessor

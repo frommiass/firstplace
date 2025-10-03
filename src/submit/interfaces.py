@@ -120,5 +120,24 @@ class IAnswerGenerator(ABC):
         pass
 
 
+class ModelWithMemory(ABC):
+    """Базовый класс для модели с памятью."""
+    
+    @abstractmethod
+    def write_to_memory(self, messages: List[Message], dialogue_id: str) -> None:
+        """Записывает сообщения в память."""
+        pass
+
+    @abstractmethod
+    def clear_memory(self, dialogue_id: str) -> None:
+        """Очищает память для диалога."""
+        pass
+
+    @abstractmethod
+    def answer_to_question(self, dialogue_id: str, question: str) -> str:
+        """Генерирует ответ на вопрос."""
+        pass
+
+
 # Константы
 NO_INFO_THRESHOLD = 0.3
