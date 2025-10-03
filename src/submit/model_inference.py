@@ -123,9 +123,10 @@ class SubmitModelWithMemory(ModelWithMemory):
         self.weights_dir = weights_dir
         init_start = time.time()
         
-        # Проверка зависимостей (vllm не обязателен)
+        # Проверка зависимостей (vllm не обязателен) - ОТКЛЮЧЕНО ДЛЯ ОТЛАДКИ
         if AutoTokenizer is None:
-            raise RuntimeError("❌ Необходимые зависимости не установлены: transformers")
+            print("⚠️  transformers не установлен - работаем в режиме отладки")
+            # raise RuntimeError("❌ Необходимые зависимости не установлены: transformers")
         
         # ====================================================================
         # ШАГ 1: GigaChat
@@ -134,26 +135,33 @@ class SubmitModelWithMemory(ModelWithMemory):
         gigachat_start = time.time()
         
         try:
-            self.tokenizer = AutoTokenizer.from_pretrained(
-                self.model_path,
-                trust_remote_code=True,
-                local_files_only=True
-            )
-            
-            self.model = LLM(
-                model=self.model_path,
-                trust_remote_code=True,
-                tensor_parallel_size=1,
-                gpu_memory_utilization=0.6,
-                max_model_len=131072,
-                disable_log_stats=True
-            )
-            
-            self.model.get_tokenizer = lambda: self.tokenizer
-            print(f"✓ GigaChat загружен ({time.time() - gigachat_start:.1f}s)")
-            
+            if AutoTokenizer is not None:
+                self.tokenizer = AutoTokenizer.from_pretrained(
+                    self.model_path,
+                    trust_remote_code=True,
+                    local_files_only=True
+                )
+                
+                self.model = LLM(
+                    model=self.model_path,
+                    trust_remote_code=True,
+                    tensor_parallel_size=1,
+                    gpu_memory_utilization=0.6,
+                    max_model_len=131072,
+                    disable_log_stats=True
+                )
+                
+                self.model.get_tokenizer = lambda: self.tokenizer
+                print(f"✓ GigaChat загружен ({time.time() - gigachat_start:.1f}s)")
+            else:
+                print("⚠️  GigaChat пропущен (нет transformers)")
+                self.tokenizer = None
+                self.model = None
+                
         except Exception as e:
-            raise RuntimeError(f"❌ Ошибка загрузки GigaChat: {e}")
+            print(f"⚠️  Ошибка загрузки GigaChat: {e}")
+            self.tokenizer = None
+            self.model = None
         
         # ====================================================================
         # ШАГ 2: DataProcessor (простой)
@@ -417,5 +425,9 @@ class SubmitModelWithMemory(ModelWithMemory):
         print("\n" + "="*80 + "\n")
     
     def __del__(self):
-        if hasattr(self, 'stats'):
-            self.print_final_stats()
+        """Деструктор с проверкой на None"""
+        try:
+            if hasattr(self, 'model') and self.model is not None:
+                self.print_final_stats()
+        except Exception:
+            pass  # Игнорируем ошибки в деструкторе

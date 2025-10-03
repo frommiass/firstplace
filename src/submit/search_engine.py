@@ -267,40 +267,36 @@ class SearchEngine:
         return unique_results[:top_k]
     
     def _rerank_results(self, question: str, results: List[SearchResult]) -> List[SearchResult]:
-        """Reranker для финальной сортировки"""
+        """Reranker для финальной сортировки - ЗАГЛУШЕН ДЛЯ ОТЛАДКИ"""
         if not results:
             return results
         
-        try:
-            # Подготавливаем пары для reranker
-            pairs = []
-            for result in results:
-                pairs.append([question, result.chunk.content])
-            
-            # Reranker inference
-            inputs = self.reranker_tokenizer(
-                pairs,
-                padding=True,
-                truncation=True,
-                return_tensors='pt',
-                max_length=512
-            )
-            
-            if torch.cuda.is_available():
-                inputs = {k: v.cuda() for k, v in inputs.items()}
-            
-            with torch.no_grad():
-                scores = self.reranker_model(**inputs).logits.squeeze(-1)
-            
-            # Обновляем финальные скоры
-            for i, result in enumerate(results):
-                result.final_score = float(scores[i])
-                    
-        except Exception as e:
-            print(f"⚠️  Ошибка reranker: {e}")
-            # Если reranker не работает, используем исходные скоры
-            for result in results:
-                result.final_score = result.score
+        print(f"\n🔍 RERANKER DEBUG - Входные данные:")
+        print(f"   Вопрос: '{question}'")
+        print(f"   Количество результатов: {len(results)}")
+        
+        # Выводим все пары [вопрос, фрагмент] которые подаются в reranker
+        print(f"\n📋 Все пары для reranker:")
+        pairs = []
+        for i, result in enumerate(results):
+            pair = [question, result.chunk.content]
+            pairs.append(pair)
+            print(f"   [{i+1:2d}] Вопрос: '{question[:50]}...'")
+            print(f"       Фрагмент: '{result.chunk.content[:100]}...'")
+            print(f"       Исходный скор: {result.score:.4f}")
+            print(f"       Сессия: {result.chunk.session_id}")
+            print()
+        
+        print(f"📊 Статистика:")
+        print(f"   Всего фрагментов: {len(results)}")
+        print(f"   Средний скор: {sum(r.score for r in results) / len(results):.4f}")
+        print(f"   Мин скор: {min(r.score for r in results):.4f}")
+        print(f"   Макс скор: {max(r.score for r in results):.4f}")
+        
+        # ЗАГЛУШКА: просто используем исходные скоры
+        print(f"\n⚠️  RERANKER ЗАГЛУШЕН - используем исходные скоры")
+        for result in results:
+            result.final_score = result.score
         
         return results
     
