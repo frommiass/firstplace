@@ -1,10 +1,14 @@
 from abc import ABC, abstractmethod
 from typing import List
 
-from src.submit.interfaces import Message
+from submit.interfaces import Message
+from submit.model_inference import SubmitModelWithMemory
+
+# Алиас для совместимости
+ModelWithMemory = SubmitModelWithMemory
 
 
-class ModelWithMemory(ABC):
+class ModelWithMemoryBase(ABC):
 
     @abstractmethod
     def write_to_memory(self, messages: List[Message], dialogue_id: str) -> None:

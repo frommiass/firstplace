@@ -140,4 +140,4 @@ class ModelWithMemory(ABC):
 
 
 # Константы
-NO_INFO_THRESHOLD = 0.3
+NO_INFO_THRESHOLD = 0.15

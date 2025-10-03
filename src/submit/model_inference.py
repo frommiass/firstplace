@@ -2,90 +2,21 @@
 УПРОЩЕННЫЙ главный класс - ТОЛЬКО ВЕСА!
 
 АРХИТЕКТУРА (3 модуля):
-1. DataProcessor - препроцессинг
+1. DataProcessor - препроцессинг (ИСПРАВЛЕН: нет утечек ресурсов)
 2. SearchEngine - поиск через ВЕСА (эмбеддинги + FAISS + reranker)
 3. AnswerBuilder - генерация через ВЕСА (GigaChat)
 
-БЕЗ:
-❌ QuestionAnalyzer (не нужен!)
-❌ Классификация типов
-❌ Семантика и правила
+ИСПРАВЛЕНО:
+✅ Правильное закрытие DataProcessor.executor
+✅ Cleanup в __del__
+✅ Graceful shutdown при ошибках
 """
 
-import os
-import sys
-import subprocess
-from pathlib import Path
 from collections import defaultdict
 from typing import List, Dict
 import time
 import numpy as np
 import torch
-
-
-def install_dependencies_from_wheels():
-    """Автоматическая установка зависимостей из локальных .whl файлов"""
-    try:
-        current_dir = Path(__file__).parent
-        libs_dir = current_dir / "libs"
-        
-        if not libs_dir.exists():
-            print("⚠️  Папка libs/ не найдена")
-            return
-        
-        wheel_files = list(libs_dir.glob("*.whl"))
-        if not wheel_files:
-            print("⚠️  .whl файлы не найдены в папке libs/")
-            return
-        
-        print(f"🔧 Найдено {len(wheel_files)} .whl файлов для установки...")
-        
-        # Словарь для проверки установленных пакетов
-        package_checks = {
-            'faiss-cpu': lambda: __import__('faiss'),
-            'sentence-transformers': lambda: __import__('sentence_transformers'),
-            'rank-bm25': lambda: __import__('rank_bm25')
-        }
-        
-        for wheel_file in wheel_files:
-            try:
-                # Извлекаем имя пакета из имени файла
-                package_name = wheel_file.stem.split('-')[0].replace('_', '-')
-                
-                # Проверяем, установлен ли уже пакет
-                is_installed = False
-                if package_name in package_checks:
-                    try:
-                        package_checks[package_name]()
-                        print(f"    ✓ {package_name} уже установлен")
-                        is_installed = True
-                    except ImportError:
-                        pass
-                
-                # Если не установлен - устанавливаем
-                if not is_installed:
-                    print(f"    → Установка {wheel_file.name}...")
-                    result = subprocess.run([
-                        sys.executable, "-m", "pip", "install", 
-                        str(wheel_file), "--quiet", "--no-deps"
-                    ], capture_output=True, text=True)
-                    
-                    if result.returncode == 0:
-                        print(f"    ✓ {package_name} установлен успешно")
-                    else:
-                        print(f"    ⚠️  Ошибка установки {package_name}: {result.stderr}")
-                        
-            except Exception as e:
-                print(f"    ⚠️  Ошибка обработки {wheel_file.name}: {e}")
-        
-        print("🔧 Установка зависимостей завершена\n")
-            
-    except Exception as e:
-        print(f"⚠️  Ошибка при установке зависимостей: {e}")
-
-
-# Автоматически устанавливаем зависимости при импорте модуля
-install_dependencies_from_wheels()
 
 # Условные импорты
 try:
@@ -96,7 +27,8 @@ except ImportError:
     LLM = None
     SamplingParams = None
 
-from .interfaces import Message, ModelWithMemory
+from .interfaces import Message
+from submit_interface import ModelWithMemory
 
 # Импорт модулей
 from .data_processor import DataProcessor
@@ -123,19 +55,24 @@ class SubmitModelWithMemory(ModelWithMemory):
         self.weights_dir = weights_dir
         init_start = time.time()
         
-        # Проверка зависимостей (vllm не обязателен) - ОТКЛЮЧЕНО ДЛЯ ОТЛАДКИ
-        if AutoTokenizer is None:
-            print("⚠️  transformers не установлен - работаем в режиме отладки")
-            # raise RuntimeError("❌ Необходимые зависимости не установлены: transformers")
+        # Флаг для cleanup
+        self._initialized = False
+        
+        # Проверка зависимостей (мягкая - только предупреждение)
+        if AutoTokenizer is None or LLM is None:
+            print("⚠️  vllm не установлен - работаем без GigaChat")
         
         # ====================================================================
-        # ШАГ 1: GigaChat
+        # ШАГ 1: GigaChat (опционально)
         # ====================================================================
         print("\n[1/4] Загрузка GigaChat...")
         gigachat_start = time.time()
         
-        try:
-            if AutoTokenizer is not None:
+        self.model = None
+        self.tokenizer = None
+        
+        if AutoTokenizer is not None and LLM is not None:
+            try:
                 self.tokenizer = AutoTokenizer.from_pretrained(
                     self.model_path,
                     trust_remote_code=True,
@@ -153,15 +90,13 @@ class SubmitModelWithMemory(ModelWithMemory):
                 
                 self.model.get_tokenizer = lambda: self.tokenizer
                 print(f"✓ GigaChat загружен ({time.time() - gigachat_start:.1f}s)")
-            else:
-                print("⚠️  GigaChat пропущен (нет transformers)")
-                self.tokenizer = None
-                self.model = None
                 
-        except Exception as e:
-            print(f"⚠️  Ошибка загрузки GigaChat: {e}")
-            self.tokenizer = None
-            self.model = None
+            except Exception as e:
+                print(f"⚠️  GigaChat не загружен: {e}")
+                print(f"    Продолжаем без GigaChat...")
+                self.model = None
+        else:
+            print(f"⚠️  GigaChat пропущен (нет vllm)")
         
         # ====================================================================
         # ШАГ 2: DataProcessor (простой)
@@ -169,7 +104,7 @@ class SubmitModelWithMemory(ModelWithMemory):
         print("\n[2/4] Инициализация DataProcessor...")
         processor_start = time.time()
         
-        self.data_processor = DataProcessor()
+        self.data_processor = DataProcessor(max_workers=16)
         print(f"✓ DataProcessor готов ({time.time() - processor_start:.1f}s)")
         
         # ====================================================================
@@ -218,11 +153,16 @@ class SubmitModelWithMemory(ModelWithMemory):
             'total': []
         }
         
+        self._initialized = True
+        
         print("\n" + "="*80)
         print(f"✅ ИНИЦИАЛИЗАЦИЯ ЗАВЕРШЕНА: {self.stats['init_time']:.1f}s")
         print("="*80)
         print(f"Модули: DataProcessor + SearchEngine (веса!) + AnswerBuilder (веса!)")
-        print(f"GPU: {torch.cuda.memory_allocated() / 1e9:.2f}GB")
+        if torch and torch.cuda.is_available():
+            print(f"GPU: {torch.cuda.memory_allocated() / 1e9:.2f}GB")
+        else:
+            print(f"GPU: недоступен")
         print("="*80 + "\n")
     
     # ========================================================================
@@ -247,7 +187,7 @@ class SubmitModelWithMemory(ModelWithMemory):
             self._flush_buffer(dialogue_id)
     
     def _flush_buffer(self, dialogue_id: str) -> None:
-        """Обработка батча"""
+        """Обработка батча - ИСПРАВЛЕНО: не перезаписываем чанки!"""
         if not self.write_buffer[dialogue_id]:
             return
         
@@ -263,10 +203,15 @@ class SubmitModelWithMemory(ModelWithMemory):
                 messages_batch, dialogue_ids
             )
             
-            # Индексация (эмбеддинги → FAISS)
+            # ИСПРАВЛЕНО: Собираем ВСЕ чанки из всех processed результатов
+            all_chunks = []
             for processed in processed_batch:
                 if processed.chunks:
-                    self.search_engine.build_index(processed.chunks, dialogue_id)
+                    all_chunks.extend(processed.chunks)
+            
+            # Индексация ОДИН РАЗ со всеми чанками
+            if all_chunks:
+                self.search_engine.build_index(all_chunks, dialogue_id)
             
             self.write_buffer[dialogue_id] = []
             self.last_flush_time[dialogue_id] = time.time()
@@ -274,8 +219,9 @@ class SubmitModelWithMemory(ModelWithMemory):
             
             if self.stats['batch_flushes'] % 10 == 0:
                 flush_time = time.time() - flush_start
+                chunks_count = len(all_chunks)
                 print(f"[Flush] Батч #{self.stats['batch_flushes']}: "
-                      f"{batch_size} сообщений за {flush_time:.2f}s")
+                      f"{batch_size} сообщений, {chunks_count} чанков за {flush_time:.2f}s")
                 
         except Exception as e:
             print(f"❌ Ошибка flush: {e}")
@@ -321,7 +267,7 @@ class SubmitModelWithMemory(ModelWithMemory):
             search_results = self.search_engine.search(
                 question=question,
                 dialogue_id=dialogue_id,
-                top_k=20  # Топ-20 после reranker
+                top_k=50  # Топ-50 после reranker
             )
             
             search_time = time.time() - search_start
@@ -420,14 +366,47 @@ class SubmitModelWithMemory(ModelWithMemory):
         print(f"\n💾 КЭШ:")
         print(f"  Hit rate: {hit_rate*100:.1f}%")
         
+        # Статистика DataProcessor
+        if hasattr(self.data_processor, 'get_stats'):
+            dp_stats = self.data_processor.get_stats()
+            print(f"\n📦 DATAPROCESSOR:")
+            print(f"  Обработано: {dp_stats['total_processed']}")
+            print(f"  Чанков: {dp_stats['total_chunks']}")
+            print(f"  Ошибок: {dp_stats['errors']}")
+        
         print(f"\n💾 GPU:")
-        print(f"  Использовано: {torch.cuda.memory_allocated() / 1e9:.2f}GB")
+        if torch and torch.cuda.is_available():
+            print(f"  Использовано: {torch.cuda.memory_allocated() / 1e9:.2f}GB")
+        else:
+            print(f"  недоступен")
         print("\n" + "="*80 + "\n")
     
+    def shutdown(self):
+        """
+        Правильное закрытие всех ресурсов.
+        
+        ВАЖНО: Вызывать при завершении!
+        """
+        if not self._initialized:
+            return
+        
+        print("\n🧹 Закрытие ресурсов...")
+        
+        # Закрываем DataProcessor
+        if hasattr(self, 'data_processor'):
+            try:
+                self.data_processor.shutdown()
+                print("✓ DataProcessor закрыт")
+            except Exception as e:
+                print(f"⚠️ Ошибка закрытия DataProcessor: {e}")
+        
+        # Финальная статистика
+        if hasattr(self, 'stats'):
+            self.print_final_stats()
+        
+        self._initialized = False
+        print("✓ Все ресурсы освобождены\n")
+    
     def __del__(self):
-        """Деструктор с проверкой на None"""
-        try:
-            if hasattr(self, 'model') and self.model is not None:
-                self.print_final_stats()
-        except Exception:
-            pass  # Игнорируем ошибки в деструкторе
+        """Cleanup при удалении объекта"""
+        self.shutdown()
